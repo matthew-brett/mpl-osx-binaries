@@ -21,3 +21,6 @@ It comes from the output of ``git show
 b7d49ff7c68a012e5f20e1f5c1bdb22b8c01368c:make.osx`` in the matplotlib tree.
 
 I also fetched the then-current version of ``README.osx`` using the same method.
+
+Data files to form the binary mpkg files were in ``release/osx/data`` deleted in
+commit ``307c06a1``.  These are now in this repo in ``mpkg_files``.
