@@ -47,14 +47,22 @@ def configure(ctx):
     ctx.check_python_headers()
     ctx.check_python_module('numpy')
     ctx.check_python_module('bdist_mpkg')
-    ctx.env.BLD_PREFIX = ctx.path.get_bld().abspath()
+    bld_path = ctx.path.get_bld().abspath()
+    ctx.env.BLD_PREFIX = bld_path
     ctx.find_program('touch', var='TOUCH')
-    ctx.find_program('touch', var='TOUCH')
-    ctx.env.MACOSX_DEPLOYMENT_TARGET='10.6'
-    if 'ARCH_FLAGS' in os.environ:
-        ctx.env.ARCH_FLAGS=os.environ['ARCH_FLAGS']
-    else:
-        ctx.env.ARCH_FLAGS = '-arch i386 -arch x86_64'
+    # Prepare environment variables
+    sys_env = dict(os.environ)
+    sys_env['MACOSX_DEPLOYMENT_TARGET']='10.6'
+    if not 'ARCH_FLAGS' in sys_env:
+        sys_env['ARCH_FLAGS'] = '-arch i386 -arch x86_64'
+    sys_env['CPPFLAGS'] = ('-I{0}/include '
+                           '-I{0}/freetype2/include').format(bld_path)
+    sys_env['CFLAGS'] = sys_env['ARCH_FLAGS']
+    sys_env['LDFLAGS'] = '{0} -L{1}/lib'.format(
+        sys_env['ARCH_FLAGS'],
+        bld_path)
+    sys_env['PATH'] = '{0}/bin:'.format(bld_path) + sys_env['PATH']
+    ctx.env.env = sys_env
 
 
 def fetch(ctx):
@@ -71,44 +79,48 @@ def build(ctx):
         srcnode = ctx.path.make_node(srcfile)
         bld_path = ctx.path.get_bld()
         dirnode = bld_path.make_node(dirname)
+        val['dirnode'] = dirnode
         tarflag = 'j' if tarname.endswith('bz2') else 'z'
         ctx(
-            rule   = 'cp ${SRC} ${TGT}',
+            rule = 'cp ${SRC} ${TGT}',
             source = srcnode,
             target = tarname,
         )
         ctx(
-            rule   = 'tar {0}xvf ${{SRC}}'.format(tarflag),
+            rule = 'tar {0}xvf ${{SRC}}'.format(tarflag),
             source = tarname,
             target = dirnode
         )
-        if name == 'zlib':
-            ctx(
-                rule   = ('cd ${SRC} && '
-                          './configure --prefix=${BLD_PREFIX} && '
-                          'make -j3 install && '
-                          'cd .. && ${TOUCH} ${TGT}'),
-                source = dirnode,
-                target = 'zlib.stamp',
-            )
-        elif name == 'png':
-            ctx(
-                rule   = ('cd ${SRC} && '
-                          './configure --disable-dependency-tracking '
-                          '--prefix=${BLD PREFIX} && '
-                          'make -j3 install && '
-                          'cd .. && ${TOUCH} ${TGT}'),
-                source = dirnode,
-                target = 'png.stamp',
-            )
-        else: # Freetype
-            ctx(
-                rule   = ('cd ${SRC} && '
-                          './configure --prefix=${BLD_PREFIX} && '
-                          'make -j3 && '
-                          'make -j3 install && '
-                          'cp objs/.libs/libfreetype.a . && '
-                          'cd .. && ${TOUCH} ${TGT}'),
-                source = dirnode,
-                target = 'freetype.stamp',
-            )
+    ctx( # zlib
+        rule   = ('cd ${SRC} && '
+                  './configure --prefix=${BLD_PREFIX} && '
+                  'make -j3 install && '
+                  'cd .. && ${TOUCH} ${TGT}'),
+        source = EXTLIBS_PROC['zlib']['dirnode'],
+        target = 'zlib.stamp',
+    )
+    ctx( # png
+        rule   = ('cd ${SRC[0]} && '
+                  './configure --disable-dependency-tracking '
+                  '--prefix=${BLD_PREFIX} && '
+                  'make -j3 install && '
+                  'cd .. && ${TOUCH} ${TGT}'),
+        source = [EXTLIBS_PROC['png']['dirnode'], 'zlib.stamp'],
+        target = 'png.stamp',
+    )
+    ctx( # freetype
+        rule   = ('cd ${SRC[0]} && '
+                  './configure --prefix=${BLD_PREFIX} && '
+                  'make -j3 && '
+                  'make -j3 install && '
+                  'cp objs/.libs/libfreetype.a . && '
+                  'cd .. && ${TOUCH} ${TGT}'),
+        source = [EXTLIBS_PROC['freetype']['dirnode'],
+                  'zlib.stamp',
+                  'png.stamp'],
+        target = 'freetype.stamp',
+    )
+    lib_stamps = [s + '.stamp' for s in EXTLIBS_PROC]
+    ctx( # Clean dynamic libraries just in case
+        rule = 'rm -rf lib/*.dylib',
+        source = lib_stamps)
