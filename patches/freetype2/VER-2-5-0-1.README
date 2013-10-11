@@ -1,0 +1,13 @@
+# Patch adds result of autogen.sh from archive to git source tree
+# I suppose this could have been on an up-to-date machine. In fact
+# Patch prepared by:
+cd ~/tmp
+curl -O http://savannah.spinellicreations.com//freetype/freetype-2.5.0.1.tar.bz2
+tar jxvf freetype-2.5.0.1.tar.bz2
+git clone git://git.sv.nongnu.org/freetype/freetype2.git
+cd freetype2
+git checkout VER-2-5-0-1
+cp ../freetype-2.5.0.1/builds/unix/* builds/unix
+git add -f builds/unix/*
+git diff --staged > patch.file
+git reset --hard

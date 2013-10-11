@@ -1,0 +1,9 @@
+[submodule "zlib"]
+	path = zlib
+	url = https://github.com/madler/zlib.git
+[submodule "libpng"]
+	path = libpng
+	url = git://git.code.sf.net/p/libpng/code
+[submodule "freetype2"]
+	path = freetype2
+	url = git://git.sv.nongnu.org/freetype/freetype2.git
