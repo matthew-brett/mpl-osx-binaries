@@ -26,13 +26,14 @@ PYPKGS = (
     ('setuptools',  'archives/setuptools-1.1.6.tar.gz'),
     ('bdist_mpkg', 'v0.5.0'),
     ('python-dateutil',  PDU_PKG),
+    ('pytz', 'archives/pytz-2013.7.tar.gz'),
     ('six',  'archives/six-1.4.1.tar.gz'),
     ('pyparsing',  'archives/pyparsing-2.0.1.tar.gz'),
     ('tornado',  'v3.1.1')
 )
 
 # Packages for which we make an mpkg
-MPKG_PKGS = ['tornado', 'pyparsing', 'python-dateutil', 'six']
+MPKG_PKGS = ['tornado', 'pyparsing', 'python-dateutil', 'pytz', 'six']
 
 # The one we've been waiting for
 MYSELF = ('matplotlib', '1.3.1')
