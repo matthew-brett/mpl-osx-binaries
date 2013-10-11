@@ -15,10 +15,11 @@ else: # Python 3
 
 
 # External libraries
-EXTLIBS = dict(
-    zlib = 'v1.2.8',
-    libpng = 'v1.5.9',
-    freetype2 = 'VER-2-5-0-1')
+EXTLIBS = (
+    ('bzip2', 'archives/bzip2-1.0.6.tar.gz'),
+    ('zlib', 'v1.2.8'),
+    ('libpng', 'v1.5.9'),
+    ('freetype2', 'VER-2-5-0-1'))
 
 PDU_PKG = ('archives/python-dateutil-2.0.tar.gz' if PY3
           else 'archives/python-dateutil-1.5.tar.gz')
@@ -83,7 +84,7 @@ def configure(ctx):
     sys_env['CPPFLAGS'] = ('-I{0}/include '
                            '-I{0}/freetype2/include').format(bld_path)
     sys_env['CFLAGS'] = sys_env['ARCH_FLAGS']
-    sys_env['LDFLAGS'] = '{0} -L{1}/lib'.format(
+    sys_env['LDFLAGS'] = '{0} -L{1}/lib -lpng -lbz2'.format(
         sys_env['ARCH_FLAGS'],
         bld_path)
     sys_env['PATH'] = '{0}/bin:'.format(bld_path) + sys_env['PATH']
@@ -114,18 +115,32 @@ def build(ctx):
     bld_node = ctx.path.get_bld()
     bld_path = bld_node.abspath()
     lib_targets = {}
-    for name, tag in EXTLIBS.items():
-        git_dir = pjoin(src_path, name)
-        prefix = pjoin('src', name)
-        dirnode = bld_node.make_node(prefix)
-        ctx(
-            rule = ('cd {0} && '
-                    'git archive --prefix={1}/ {2} | '
-                    '( cd {3} && tar x )'.format(
-                    git_dir, prefix, tag, bld_path)),
-            target = dirnode,
-        )
-        patch_file = pjoin(src_path, 'patches', name, tag + '.patch')
+    lib_dirnames = {}
+    for name, source in EXTLIBS:
+        if source.startswith('archives/'):
+            _, pkg_file = psplit(source)
+            assert pkg_file.endswith('.tar.gz')
+            pkg_dir, _ = pkg_file.split('.tar.', 1)
+            pkg_ver, _ = pkg_dir.split('-', 1)
+            prefix = pjoin('src', pkg_dir)
+            dirnode = bld_node.make_node(prefix)
+            pkg_path = pjoin(src_path, source)
+            ctx(
+                rule = ('cd src && tar zxvf ' + pkg_path),
+                target = dirnode)
+        else: # assume tag
+            git_dir = pjoin(src_path, name)
+            prefix = pjoin('src', name)
+            dirnode = bld_node.make_node(prefix)
+            pkg_ver = source
+            ctx(
+                rule = ('cd {0} && '
+                        'git archive --prefix={1}/ {2} | '
+                        '( cd {3} && tar x )'.format(
+                        git_dir, prefix, source, bld_path)),
+                target = dirnode,
+            )
+        patch_file = pjoin(src_path, 'patches', name, pkg_ver + '.patch')
         if os.path.isfile(patch_file):
             target = name + '.patch.stamp'
             ctx(
@@ -138,6 +153,16 @@ def build(ctx):
         else:
             target = dirnode
         lib_targets[name] = target
+        lib_dirnames[name] = prefix
+    ctx( # bzip2
+        rule   = ('cd %s && '
+                  'make -j3 && '
+                  'make install PREFIX=${BLD_PREFIX} && '
+                  'cd ../.. && ${TOUCH} ${TGT}' %
+                 lib_dirnames['bzip2']),
+        source = lib_targets['bzip2'],
+        target = 'bzip2.stamp',
+    )
     ctx( # zlib
         rule   = ('cd src/zlib && '
                   './configure --prefix=${BLD_PREFIX} && '
@@ -160,14 +185,14 @@ def build(ctx):
                   './configure --prefix=${BLD_PREFIX} && '
                   'make -j3 && '
                   'make -j3 install && '
-                  'cp objs/.libs/libfreetype.a . && '
                   'cd ../.. && ${TOUCH} ${TGT}'),
         source = [lib_targets['freetype2'],
+                  'bzip2.stamp',
                   'zlib.stamp',
                   'libpng.stamp'],
         target = 'freetype2.stamp',
     )
-    lib_stamps = [s + '.stamp' for s in EXTLIBS]
+    lib_stamps = [s[0] + '.stamp' for s in EXTLIBS]
     ctx( # Clean dynamic libraries just in case
         rule = 'rm -rf lib/*.dylib && ${TOUCH} ${TGT}',
         source = lib_stamps,
@@ -292,4 +317,4 @@ basedirlist = {0}, /usr
         target = 'mpkg_plist.stamp'
        )
     # Change the permissions with something like
-    # sudo reown_mpkg build/*.mpkg root admin
+    # sudo write_mpkg.py from repo directory
