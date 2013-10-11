@@ -19,19 +19,22 @@ EXTLIBS = dict(
     libpng = 'v1.5.9',
     freetype2 = 'VER-2-5-0-1')
 
-PYPKGS = {
-    'bdist_mpkg': 'v0.5.0',
-    'setuptools':  'archives/setuptools-1.1.6.tar.gz',
-    'tornado':  'v3.1.1',
-    'pyparsing':  'archives/pyparsing-2.0.1.tar.gz',
-    'python-dateutil':  'archives/python-dateutil-1.5.tar.gz',
-    'six':  'archives/six-1.4.1.tar.gz'}
+PDU_PKG = ('archives/python-dateutil-2.0.tar.gz' if PY3
+          else 'archives/python-dateutil-1.5.tar.gz')
 
-if PY3:
-    PYPKGS['python-dateutil'] = 'archives/python-dateutil-2.0.tar.gz'
+PYPKGS = (
+    ('setuptools',  'archives/setuptools-1.1.6.tar.gz'),
+    ('bdist_mpkg', 'v0.5.0'),
+    ('python-dateutil',  PDU_PKG),
+    ('six',  'archives/six-1.4.1.tar.gz'),
+    ('pyparsing',  'archives/pyparsing-2.0.1.tar.gz'),
+    ('tornado',  'v3.1.1')
+)
 
+# Packages for which we make an mpkg
 MPKG_PKGS = ['tornado', 'pyparsing', 'python-dateutil', 'six']
 
+# The one we've been waiting for
 MYSELF = ('matplotlib', '1.3.1')
 
 
@@ -141,23 +144,19 @@ def build(ctx):
         source = lib_stamps)
     # Install python build dependencies
     my_stamps = lib_stamps[:]
-    mpkg_stamps = [] # mpkgs we are going to add
-    # We need a node to refer to these as-yet non-existent files
     site_pkgs = _lib_path('.')
     site_pkgs_node = bld_node.make_node(site_pkgs)
-    setuptools_stamp = bld_node.make_node('setuptools.stamp')
-    bdist_mpkg_stamp = bld_node.make_node('bdist_mpkg.stamp')
     # We need the install directory first
     ctx(
         rule = 'mkdir -p ${TGT}',
         target = site_pkgs_node
     )
-    # And the mpkg framework
-    for name in PYPKGS:
-        source = PYPKGS[name]
-        depends = [site_pkgs_node]
-        if name != 'setuptools':
-            depends.append(setuptools_stamp)
+    # Run installs sequentially; nasty things happen when more than one package
+    # is trying to write to easy-install.pth at the same time
+    install_depends = [site_pkgs_node]
+    mpkg_stamps = [] # mpkgs we are going to add
+    for name, source in PYPKGS:
+        # Copy source first; can be asynchronous
         if source.startswith('archives/'):
             _, pkg_file = os.path.split(source)
             assert pkg_file.endswith('.tar.gz')
@@ -179,26 +178,28 @@ def build(ctx):
                         git_dir, prefix, source, bld_path)),
                 target = dirnode,
             )
-        # Install
-        stamp_file = name + '.stamp'
+        # Install must run in sequence to avoid several installs trying to write
+        # the easy-install.pth file at the same time
+        stamp_file = bld_node.make_node(name + '.stamp')
         ctx(
             rule = ('cd %s && ${PYTHON} setup.py install '
                     '--prefix=${BLD_PREFIX} && '
                     'cd ../.. && ${TOUCH} %s' %
                     (prefix, stamp_file)
                    ),
-            source = [dirnode] + depends,
+            source = [dirnode] + install_depends[:],
             target = stamp_file)
         my_stamps.append(stamp_file)
-        # If mpkg needed, make that
+        install_depends = [stamp_file]
+        # Run the mpkgs after the bdist_mpkg install, and the package install
         if name in MPKG_PKGS:
-            mpkg_stamp_file = name + '.mpkg.stamp'
+            mpkg_stamp_file = bld_node.make_node(name + '.mpkg.stamp')
             ctx(
-                rule = ('cd %s && ${PYTHON} setup.py bdist_mpkg && '
+                rule = ('cd %s && bdist_mpkg setup.py bdist_mpkg && '
                         'cd ../.. && ${TOUCH} %s' %
                         (prefix, mpkg_stamp_file)
                     ),
-                source = [stamp_file, bdist_mpkg_stamp],
+                source = [stamp_file, 'bdist_mpkg.stamp'],
                 target = mpkg_stamp_file)
             mpkg_stamps.append(mpkg_stamp_file)
     # At last the real package
