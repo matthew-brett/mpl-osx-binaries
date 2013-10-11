@@ -1,46 +1,65 @@
-# waf script
-# vim: ft=python
+# waf script # vim: ft=python
 import os
 from os.path import join as pjoin
 import sys
 
-if sys.version_info[0] == 2:
+PY3 = sys.version_info[0] >= 3
+if not PY3:
     from urllib import urlretrieve
     from urlparse import urlparse
 else: # Python 3
     from urllib.request import urlretrieve
     from urllib.parse import urlparse
 
-top = '.'
-out = 'build'
 
 # External libraries
 EXTLIBS = dict(
     zlib = 'v1.2.8',
     libpng = 'v1.5.9',
-    freetype2 = 'VER-2-5-0-1',
-)
+    freetype2 = 'VER-2-5-0-1')
+
+PYPKGS = {
+    'bdist_mpkg': 'v0.5.0',
+    'setuptools':  'archives/setuptools-1.1.6.tar.gz',
+    'tornado':  'v3.1.1',
+    'pyparsing':  'archives/pyparsing-2.0.1.tar.gz',
+    'python-dateutil':  'archives/python-dateutil-1.5.tar.gz',
+    'six':  'archives/six-1.4.1.tar.gz'}
+
+if PY3:
+    PYPKGS['python-dateutil'] = 'archives/python-dateutil-2.0.tar.gz'
+
+
+MYSELF = ('matplotlib', '1.3.1')
+
 
 def options(opt):
-    opt.load('python') # options for disabling pyc or pyo compilation
     opt.load('compiler_c')
+    # Copy of python.py extension from waf
+    opt.load('mypython')
+
+
+def _lib_path(start_path):
+    version = sys.version_info
+    return '{0}/lib/python{1}.{2}/site-packages'.format(
+        start_path, version[0], version[1])
 
 
 def configure(ctx):
+    sys_env = dict(os.environ)
+    bld_path = ctx.path.get_bld().abspath()
     ctx.load('compiler_c')
-    ctx.load('python')
-    ctx.check_python_version((2,7))
+    ctx.load('mypython')
     ctx.check_python_headers()
     ctx.check_python_module('numpy')
-    ctx.check_python_module('bdist_mpkg')
-    bld_path = ctx.path.get_bld().abspath()
     ctx.env.BLD_PREFIX = bld_path
     ctx.find_program('touch', var='TOUCH')
     ctx.find_program('git', var='GIT')
     # Update submodules in repo
     ctx.exec_command('git submodule update --init')
     # Prepare environment variables for compilation
-    sys_env = dict(os.environ)
+    # For installing python modules
+    sys_env['PYTHONPATH'] = _lib_path(bld_path)
     sys_env['MACOSX_DEPLOYMENT_TARGET']='10.6'
     if not 'ARCH_FLAGS' in sys_env:
         sys_env['ARCH_FLAGS'] = '-arch i386 -arch x86_64'
@@ -117,3 +136,55 @@ def build(ctx):
     ctx( # Clean dynamic libraries just in case
         rule = 'rm -rf lib/*.dylib',
         source = lib_stamps)
+    # Install python build dependencies
+    my_stamps = lib_stamps[:]
+    for name in PYPKGS:
+        source = PYPKGS[name]
+        depends = ['setuptools.stamp'] if  name != 'setuptools' else []
+        if source.startswith('archives/'):
+            _, pkg_file = os.path.split(source)
+            assert pkg_file.endswith('.tar.gz')
+            pkg_dir, _ = pkg_file.split('.tar.', 1)
+            dirnode = bld_node.make_node('src/' + pkg_dir)
+            pkg_path = pjoin(src_path, source)
+            ctx(
+                rule = ('cd src && tar zxvf ' + pkg_path),
+                target = dirnode)
+        else: # assume tag
+            git_dir = pjoin(src_path, name)
+            prefix = pjoin('src', name)
+            dirnode = bld_node.make_node(prefix)
+            ctx(
+                rule = ('cd {0} && '
+                        'git archive --prefix={1}/ {2} | '
+                        '( cd {3} && tar x )'.format(
+                        git_dir, prefix, source, bld_path)),
+                target = dirnode,
+            )
+        stamp_file = name + '.stamp'
+        ctx(
+            rule = ('cd ${SRC} && ${PYTHON} setup.py install '
+                    '--prefix=${BLD_PREFIX} && '
+                    'cd ../.. && ${TOUCH} ' + stamp_file
+                   ),
+            source = [dirnode] + depends,
+            target = stamp_file)
+        my_stamps.append(stamp_file)
+    my_name, my_tag = MYSELF
+    git_dir = pjoin(src_path, my_name)
+    prefix = pjoin('src', my_name)
+    dirnode = bld_node.make_node(prefix)
+    ctx(
+        rule = ('cd {0} && '
+                'git archive --prefix={1}/ {2} | '
+                '( cd {3} && tar x )'.format(
+                git_dir, prefix, my_tag, bld_path)),
+        target = dirnode,
+    )
+    stamp_file = my_name + '.stamp'
+    ctx(
+        rule = ('cd %s && ${PYTHON} setup.py bdist_mpkg && '
+                'cd ../.. && ${TOUCH} %s' % (prefix, stamp_file)
+                ),
+        source = [dirnode] + my_stamps,
+        target = stamp_file)

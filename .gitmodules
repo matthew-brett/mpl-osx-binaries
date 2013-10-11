@@ -7,3 +7,12 @@
 [submodule "freetype2"]
 	path = freetype2
 	url = git://git.sv.nongnu.org/freetype/freetype2.git
+[submodule "bdist_mpkg"]
+	path = bdist_mpkg
+	url = https://github.com/matthew-brett/bdist_mpkg
+[submodule "matplotlib"]
+	path = matplotlib
+	url = https://github.com/matplotlib/matplotlib.git
+[submodule "tornado"]
+	path = tornado
+	url = https://github.com/facebook/tornado
