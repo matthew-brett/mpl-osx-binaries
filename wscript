@@ -222,12 +222,14 @@ def build(ctx):
         source = [dirnode] + my_stamps,
         target = stamp_file)
     # Now the mpkg
-    """
-    def compile_mpkg(task):
-        # Now all the mpkgs are built, compile them
-        my_mpkgs = os.listdir()
     ctx(
-        rule = compile_mpkg,
+        rule = ('cp -r src/{0}/dist/*.mpkg . && '
+                'cp -r src/*/dist/*.mpkg/Contents/Packages/* '
+                '{0}*.mpkg/Contents/Packages && '
+                '${{TOUCH}} {1}').format(my_name, 'mpkg.stamp'),
         source = [stamp_file] + mpkg_stamps,
         target = 'mpkg.stamp')
-    """
+    # Write the plist
+    # See rewrite_plist.py
+    # Change the permissions with something like
+    # sudo reown_mpkg reginald.mpkg root admin
