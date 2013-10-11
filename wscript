@@ -1,4 +1,5 @@
-# waf script # vim: ft=python
+# waf script
+# vim: ft=python
 import os
 from os.path import join as pjoin
 import sys
@@ -141,13 +142,14 @@ def build(ctx):
     # Install python build dependencies
     my_stamps = lib_stamps[:]
     mpkg_stamps = [] # mpkgs we are going to add
-    # We need a node to refer to this as-yet non-existent file
-    site_pkgs = ctx.env.PYTHONPATH
+    # We need a node to refer to these as-yet non-existent files
+    site_pkgs = _lib_path('.')
     site_pkgs_node = bld_node.make_node(site_pkgs)
     setuptools_stamp = bld_node.make_node('setuptools.stamp')
+    bdist_mpkg_stamp = bld_node.make_node('bdist_mpkg.stamp')
     # We need the install directory first
     ctx(
-        rule = 'mkdir -p ' + ctx.env.env['PYTHONPATH'],
+        rule = 'mkdir -p ${TGT}',
         target = site_pkgs_node
     )
     # And the mpkg framework
@@ -160,7 +162,8 @@ def build(ctx):
             _, pkg_file = os.path.split(source)
             assert pkg_file.endswith('.tar.gz')
             pkg_dir, _ = pkg_file.split('.tar.', 1)
-            dirnode = bld_node.make_node('src/' + pkg_dir)
+            prefix = pjoin('src', pkg_dir)
+            dirnode = bld_node.make_node(prefix)
             pkg_path = pjoin(src_path, source)
             ctx(
                 rule = ('cd src && tar zxvf ' + pkg_path),
@@ -179,9 +182,10 @@ def build(ctx):
         # Install
         stamp_file = name + '.stamp'
         ctx(
-            rule = ('cd ${SRC} && ${PYTHON} setup.py install '
+            rule = ('cd %s && ${PYTHON} setup.py install '
                     '--prefix=${BLD_PREFIX} && '
-                    'cd ../.. && ${TOUCH} ' + stamp_file
+                    'cd ../.. && ${TOUCH} %s' %
+                    (prefix, stamp_file)
                    ),
             source = [dirnode] + depends,
             target = stamp_file)
@@ -194,7 +198,7 @@ def build(ctx):
                         'cd ../.. && ${TOUCH} %s' %
                         (prefix, mpkg_stamp_file)
                     ),
-                source = stamp_file,
+                source = [stamp_file, bdist_mpkg_stamp],
                 target = mpkg_stamp_file)
             mpkg_stamps.append(mpkg_stamp_file)
     # At last the real package
@@ -226,4 +230,3 @@ def build(ctx):
         source = [stamp_file] + mpkg_stamps,
         target = 'mpkg.stamp')
     """
-
