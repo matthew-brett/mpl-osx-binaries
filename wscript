@@ -66,6 +66,7 @@ def configure(ctx):
     # For installing python modules
     ctx.env.PYTHONPATH = _lib_path(bld_path)
     sys_env['PYTHONPATH'] = ctx.env.PYTHONPATH
+    sys_env['PKG_CONFIG_PATH'] = '{0}/lib/pkgconfig'.format(bld_path)
     sys_env['MACOSX_DEPLOYMENT_TARGET']='10.6'
     if not 'ARCH_FLAGS' in sys_env:
         sys_env['ARCH_FLAGS'] = '-arch i386 -arch x86_64'
