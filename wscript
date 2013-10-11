@@ -59,7 +59,8 @@ def configure(ctx):
     ctx.exec_command('git submodule update --init')
     # Prepare environment variables for compilation
     # For installing python modules
-    sys_env['PYTHONPATH'] = _lib_path(bld_path)
+    ctx.env.PYTHONPATH = _lib_path(bld_path)
+    sys_env['PYTHONPATH'] = ctx.env.PYTHONPATH
     sys_env['MACOSX_DEPLOYMENT_TARGET']='10.6'
     if not 'ARCH_FLAGS' in sys_env:
         sys_env['ARCH_FLAGS'] = '-arch i386 -arch x86_64'
@@ -138,10 +139,20 @@ def build(ctx):
         source = lib_stamps)
     # Install python build dependencies
     my_stamps = lib_stamps[:]
+    # We need a node to refer to this as-yet non-existent file
+    site_pkgs = ctx.env.PYTHONPATH
+    site_pkgs_node = bld_node.make_node(site_pkgs)
     setuptools_stamp = bld_node.make_node('setuptools.stamp')
+    # We need the install directory first
+    ctx(
+        rule = 'mkdir -p ' + ctx.env.env['PYTHONPATH'],
+        target = site_pkgs_node
+    )
     for name in PYPKGS:
         source = PYPKGS[name]
-        depends = [setuptools_stamp] if  name != 'setuptools' else []
+        depends = [site_pkgs_node]
+        if name != 'setuptools':
+            depends.append(setuptools_stamp)
         if source.startswith('archives/'):
             _, pkg_file = os.path.split(source)
             assert pkg_file.endswith('.tar.gz')
