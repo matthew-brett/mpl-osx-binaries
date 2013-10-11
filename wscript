@@ -138,9 +138,10 @@ def build(ctx):
         source = lib_stamps)
     # Install python build dependencies
     my_stamps = lib_stamps[:]
+    setuptools_stamp = bld_node.make_node('setuptools.stamp')
     for name in PYPKGS:
         source = PYPKGS[name]
-        depends = ['setuptools.stamp'] if  name != 'setuptools' else []
+        depends = [setuptools_stamp] if  name != 'setuptools' else []
         if source.startswith('archives/'):
             _, pkg_file = os.path.split(source)
             assert pkg_file.endswith('.tar.gz')
