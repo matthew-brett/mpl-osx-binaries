@@ -1,8 +1,9 @@
 # waf script
 # vim: ft=python
 import os
-from os.path import join as pjoin
+from os.path import join as pjoin, abspath, split as psplit
 import sys
+from glob import glob
 
 PY3 = sys.version_info[0] >= 3
 if not PY3:
@@ -61,6 +62,14 @@ def configure(ctx):
     ctx.env.BLD_PREFIX = bld_path
     ctx.find_program('touch', var='TOUCH')
     ctx.find_program('git', var='GIT')
+    try:
+        ctx.find_program('pkg-config')
+    except ctx.errors.ConfigurationError:
+        ctx.to_log('Failed to find pkg-config; consider installing from '
+                   'source at http://pkgconfig.freedesktop.org/releases.')
+        ctx.to_log('I used ``./configure --with-internal-glib && make '
+                   '&& sudo make install``')
+        ctx.fatal('Could not find pkg-config; see log for suggestion')
     # Update submodules in repo
     ctx.exec_command('git submodule update --init')
     # Prepare environment variables for compilation
@@ -79,6 +88,24 @@ def configure(ctx):
         bld_path)
     sys_env['PATH'] = '{0}/bin:'.format(bld_path) + sys_env['PATH']
     ctx.env.env = sys_env
+
+
+def write_plist(work_dir, pkg_name, pkg_ver, component_sdir='Contents/Packages'):
+    # Write plist starting at working directory
+    from bdist_mpkg.plists import mpkg_info, write, python_requirement
+    from bdist_mpkg import tools
+    wd = abspath(work_dir)
+    package_names = glob(pjoin(work_dir, component_sdir, '*.pkg'))
+    package_names = [psplit(pn)[1] for pn in package_names]
+    n_pkgs = len(package_names)
+    extra_plist = dict(
+            IFRequirementDicts=[python_requirement(pkg_name)],
+            IFPkgFlagComponentDirectory=tools.unicode_path(
+                './' + component_sdir))
+    plist = mpkg_info(pkg_name, pkg_ver,
+                      zip(package_names, ('selected',) * n_pkgs))
+    plist.update(extra_plist)
+    write(plist, pjoin(wd, 'Contents', 'Info.plist'))
 
 
 def build(ctx):
@@ -142,10 +169,11 @@ def build(ctx):
     )
     lib_stamps = [s + '.stamp' for s in EXTLIBS]
     ctx( # Clean dynamic libraries just in case
-        rule = 'rm -rf lib/*.dylib',
-        source = lib_stamps)
+        rule = 'rm -rf lib/*.dylib && ${TOUCH} ${TGT}',
+        source = lib_stamps,
+        target = 'dylib_deleted.stamp')
     # Install python build dependencies
-    my_stamps = lib_stamps[:]
+    my_stamps = ['dylib_deleted.stamp']
     site_pkgs = _lib_path('.')
     site_pkgs_node = bld_node.make_node(site_pkgs)
     # We need the install directory first
@@ -160,7 +188,7 @@ def build(ctx):
     for name, source in PYPKGS:
         # Copy source first; can be asynchronous
         if source.startswith('archives/'):
-            _, pkg_file = os.path.split(source)
+            _, pkg_file = psplit(source)
             assert pkg_file.endswith('.tar.gz')
             pkg_dir, _ = pkg_file.split('.tar.', 1)
             prefix = pjoin('src', pkg_dir)
@@ -216,12 +244,31 @@ def build(ctx):
                 git_dir, prefix, my_tag, bld_path)),
         target = dirnode,
     )
+    # Write setup.cfg into tree
+    def write_cfg(task):
+        print("Here " + os.getcwd())
+        fname = task.outputs[0].abspath()
+        with open(fname, 'wt') as fobj:
+            fobj.write("""
+# setup.cfg file
+[directories]
+# 0verride the default basedir in setupext.py.
+# This can be a single directory or a comma-delimited list of directories.
+basedirlist = {0}, /usr
+""".format(bld_path))
+    setup_cfg_fname = pjoin(prefix, 'setup.cfg')
+    ctx(
+        rule = write_cfg,
+        source = dirnode,
+        target = [setup_cfg_fname]
+    )
+    # Compile mpl
     stamp_file = my_name + '.stamp'
     ctx(
         rule = ('cd %s && ${PYTHON} setup.py bdist_mpkg && '
                 'cd ../.. && ${TOUCH} %s' % (prefix, stamp_file)
                 ),
-        source = [dirnode] + my_stamps,
+        source = [setup_cfg_fname] + my_stamps,
         target = stamp_file)
     # Now the mpkg
     ctx(
@@ -232,6 +279,17 @@ def build(ctx):
         source = [stamp_file] + mpkg_stamps,
         target = 'mpkg.stamp')
     # Write the plist
-    # See rewrite_plist.py
+    def update_plist(task):
+        mpkgs = glob('{0}/{1}*.mpkg'.format(bld_path, my_name))
+        assert len(mpkgs) == 1
+        write_plist(mpkgs[0], my_name, my_tag)
+        fname = task.outputs[0].abspath()
+        with open(fname, 'wt') as fobj:
+            fobj.write('done')
+
+    ctx(rule = update_plist,
+        source = 'mpkg.stamp',
+        target = 'mpkg_plist.stamp'
+       )
     # Change the permissions with something like
-    # sudo reown_mpkg reginald.mpkg root admin
+    # sudo reown_mpkg build/*.mpkg root admin
