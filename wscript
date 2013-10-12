@@ -8,12 +8,6 @@ from glob import glob
 import shutil
 
 PY3 = sys.version_info[0] >= 3
-if not PY3:
-    from urllib import urlretrieve
-    from urlparse import urlparse
-else: # Python 3
-    from urllib.request import urlretrieve
-    from urllib.parse import urlparse
 
 from wafutils import back_tick
 
