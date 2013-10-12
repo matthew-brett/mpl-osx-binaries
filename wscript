@@ -74,19 +74,21 @@ def configure(ctx):
     # Update submodules in repo
     ctx.exec_command('git submodule update --init')
     # Prepare environment variables for compilation
+    if not 'ARCH_FLAGS' in sys_env:
+        sys_env['ARCH_FLAGS'] = '-arch i386 -arch x86_64'
+    ctx.env.THIN_LDFLAGS = '{0} -L{1}/lib'.format(
+        sys_env['ARCH_FLAGS'],
+        bld_path)
+    ctx.env.THICK_LDFLAGS = ctx.env.THIN_LDFLAGS + ' -lpng -lbz2'
     # For installing python modules
     ctx.env.PYTHONPATH = _lib_path(bld_path)
     sys_env['PYTHONPATH'] = ctx.env.PYTHONPATH
     sys_env['PKG_CONFIG_PATH'] = '{0}/lib/pkgconfig'.format(bld_path)
     sys_env['MACOSX_DEPLOYMENT_TARGET']='10.6'
-    if not 'ARCH_FLAGS' in sys_env:
-        sys_env['ARCH_FLAGS'] = '-arch i386 -arch x86_64'
     sys_env['CPPFLAGS'] = ('-I{0}/include '
                            '-I{0}/freetype2/include').format(bld_path)
     sys_env['CFLAGS'] = sys_env['ARCH_FLAGS']
-    sys_env['LDFLAGS'] = '{0} -L{1}/lib -lpng -lbz2'.format(
-        sys_env['ARCH_FLAGS'],
-        bld_path)
+    sys_env['LDFLAGS'] = ctx.env.THICK_LDFLAGS
     sys_env['PATH'] = '{0}/bin:'.format(bld_path) + sys_env['PATH']
     ctx.env.env = sys_env
 
@@ -156,8 +158,8 @@ def build(ctx):
         lib_dirnames[name] = prefix
     ctx( # bzip2
         rule   = ('cd %s && '
-                  'make -j3 && '
-                  'make install PREFIX=${BLD_PREFIX} && '
+                  'LDFLAGS="${THIN_LDFLAGS}" make -j3 && '
+                  'LDFLAGS="${THIN_LDFLAGS}" make install PREFIX=${BLD_PREFIX} && '
                   'cd ../.. && ${TOUCH} ${TGT}' %
                  lib_dirnames['bzip2']),
         source = lib_targets['bzip2'],
@@ -165,17 +167,17 @@ def build(ctx):
     )
     ctx( # zlib
         rule   = ('cd src/zlib && '
-                  './configure --prefix=${BLD_PREFIX} && '
-                  'make -j3 install && '
+                  'LDFLAGS="${THIN_LDFLAGS}" ./configure --prefix=${BLD_PREFIX} && '
+                  'LDFLAGS="${THIN_LDFLAGS}" make -j3 install && '
                   'cd ../.. && ${TOUCH} ${TGT}'),
         source = lib_targets['zlib'],
         target = 'zlib.stamp',
     )
     ctx( # libpng
         rule   = ('cd src/libpng && '
-                  './configure --disable-dependency-tracking '
+                  'LDFLAGS="${THIN_LDFLAGS}" ./configure --disable-dependency-tracking '
                   '--prefix=${BLD_PREFIX} && '
-                  'make -j3 install && '
+                  'LDFLAGS="${THIN_LDFLAGS}" make -j3 install && '
                   'cd ../.. && ${TOUCH} ${TGT}'),
         source = [lib_targets['libpng'], 'zlib.stamp'],
         target = 'libpng.stamp',
