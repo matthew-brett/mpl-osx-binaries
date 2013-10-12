@@ -1,9 +1,11 @@
 # waf script
 # vim: ft=python
+from __future__ import division, print_function, absolute_import
 import os
-from os.path import join as pjoin, abspath, split as psplit
+from os.path import join as pjoin, abspath, split as psplit, isfile
 import sys
 from glob import glob
+import shutil
 
 PY3 = sys.version_info[0] >= 3
 if not PY3:
@@ -13,6 +15,7 @@ else: # Python 3
     from urllib.request import urlretrieve
     from urllib.parse import urlparse
 
+from wafutils import back_tick
 
 # External libraries
 EXTLIBS = (
@@ -45,6 +48,9 @@ def options(opt):
     opt.load('compiler_c')
     # Copy of python.py extension from waf
     opt.load('mypython')
+    # Output for mpkg writing
+    opt.add_option('--mpkg-outpath', action='store',
+                   help='directory to write built mpkg')
 
 
 def _lib_path(start_path):
@@ -72,6 +78,7 @@ def configure(ctx):
                    '&& sudo make install``')
         ctx.fatal('Could not find pkg-config; see log for suggestion')
     # Update submodules in repo
+    print('Running git submodule update, this might take a while')
     ctx.exec_command('git submodule update --init')
     # Prepare environment variables for compilation
     if not 'ARCH_FLAGS' in sys_env:
@@ -318,5 +325,37 @@ basedirlist = {0}, /usr
         source = 'mpkg.stamp',
         target = 'mpkg_plist.stamp'
        )
-    # Change the permissions with something like
-    # sudo write_mpkg.py from repo directory
+
+
+def dist(ctx):
+    # Change the permissions for mpkg and copy file somewhere
+    mpkg_outpath = ctx.options.mpkg_outpath
+    if mpkg_outpath is None:
+        ctx.fatal('Need to set --mpkg-outpath to write mpkgs')
+    # Need to be sudo
+    if not back_tick('whoami') == 'root':
+        ctx.fatal('Need to be root to run dist command - use `sudo ./waf dist`?')
+    # Get build time configuration
+    from waflib.ConfigSet import ConfigSet
+    env = ConfigSet()
+    env_cache = pjoin('build', 'c4che', '_cache.py')
+    if not isfile(env_cache):
+        ctx.fatal('Run `configure` and `build` before `dist`')
+    env.load(env_cache)
+    # Check if any mpkgs have been built
+    build_path = env.BLD_PREFIX
+    globber = pjoin(build_path, '*mpkg')
+    mpkgs = glob(globber)
+    if len(mpkgs) == 0:
+        ctx.fatal("No mpkgs found with " + globber)
+    # Put built version of bdist_mpkg onto the path
+    env = os.environ
+    env['PATH'] = pjoin(build_path, 'bin') + ':' + env['PATH']
+    env['PYTHONPATH'] = _lib_path(build_path) + ':' + env['PYTHONPATH']
+    # Write mpkgs with permissions updated
+    for mpkg in mpkgs:
+        _, mpkg_dir = psplit(mpkg)
+        out_mpkg = pjoin(mpkg_outpath, mpkg_dir)
+        shutil.rmtree(out_mpkg, ignore_errors=True)
+        shutil.copytree(mpkg, out_mpkg)
+        ctx.exec_command(['reown_mpkg', out_mpkg, 'root', 'admin'])
