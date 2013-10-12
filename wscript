@@ -51,6 +51,8 @@ def options(opt):
     # Output for mpkg writing
     opt.add_option('--mpkg-outpath', action='store',
                    help='directory to write built mpkg')
+    opt.add_option('--mpkg-clobber', action='store_true', default=False,
+                   help='whether to overwrite existing output mpkg')
 
 
 def _lib_path(start_path):
@@ -327,14 +329,14 @@ basedirlist = {0}, /usr
        )
 
 
-def dist(ctx):
+def write_mpkg(ctx):
     # Change the permissions for mpkg and copy file somewhere
     mpkg_outpath = ctx.options.mpkg_outpath
     if mpkg_outpath is None:
         ctx.fatal('Need to set --mpkg-outpath to write mpkgs')
     # Need to be sudo
     if not back_tick('whoami') == 'root':
-        ctx.fatal('Need to be root to run dist command - use `sudo ./waf dist`?')
+        ctx.fatal('Need to be root to run dist command - use `sudo ./waf write_mpkg`?')
     # Get build time configuration
     from waflib.ConfigSet import ConfigSet
     env = ConfigSet()
@@ -349,13 +351,16 @@ def dist(ctx):
     if len(mpkgs) == 0:
         ctx.fatal("No mpkgs found with " + globber)
     # Put built version of bdist_mpkg onto the path
-    env = os.environ
-    env['PATH'] = pjoin(build_path, 'bin') + ':' + env['PATH']
-    env['PYTHONPATH'] = _lib_path(build_path) + ':' + env['PYTHONPATH']
+    os.environ['PATH'] = pjoin(build_path, 'bin') + ':' + os.environ['PATH']
+    os.environ['PYTHONPATH'] = env['PYTHONPATH']
     # Write mpkgs with permissions updated
     for mpkg in mpkgs:
         _, mpkg_dir = psplit(mpkg)
         out_mpkg = pjoin(mpkg_outpath, mpkg_dir)
-        shutil.rmtree(out_mpkg, ignore_errors=True)
+        print('Found {0}, writing {1}'.format(mpkg, out_mpkg))
+        if os.path.exists(out_mpkg):
+            if not ctx.options.mpkg_clobber:
+                ctx.fatal('mpkg exists, --mpkg-clobber not set')
+            shutil.rmtree(out_mpkg, ignore_errors=True)
         shutil.copytree(mpkg, out_mpkg)
         ctx.exec_command(['reown_mpkg', out_mpkg, 'root', 'admin'])

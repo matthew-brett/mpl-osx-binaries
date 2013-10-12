@@ -23,13 +23,11 @@ You'll need:
 
 Run with::
 
-    python2.7 waf distclean
-    python2.7 waf configure
-    python2.7 waf build
+    python2.7 waf distclean configure build
 
 where ``python2.7`` is the python you want to build with.
 
-The first time you run ``configure`` it will initalized the submodules, so you
+The first time you run ``configure`` it will initalize the submodules, so you
 might need to wait a few minutes.  Or run it yourself beforehand with::
 
     git submodule update --init
@@ -37,4 +35,4 @@ might need to wait a few minutes.  Or run it yourself beforehand with::
 When the build is done, you should have a new ``matplotlib*mpkg`` directory in
 ``build``.  Copy it somewhere and set permissions with something like::
 
-    ./write_mpkg.py ~/Downloads
+    sudo ./waf write_mpkg --mpkg-outpath=~/Downloads --mpkg-clobber
