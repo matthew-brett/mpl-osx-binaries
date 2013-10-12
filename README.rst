@@ -17,6 +17,9 @@ You'll need:
     sudo make install
 * Python.org python installed from the DMG installer. I've tested with Python
   2.7 and 3.3.  It might work with the system python, I haven't tried
+* For each python you want to install from, a version of numpy >= the required
+  minimum version for matplotlib.  At time of writing (v1.3.1) this was numpy
+  1.5
 
 Run with::
 
