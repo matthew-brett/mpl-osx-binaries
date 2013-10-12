@@ -57,7 +57,7 @@ def _lib_path(start_path):
 
 def configure(ctx):
     sys_env = dict(os.environ)
-    bld_path = ctx.path.get_bld().abspath()
+    bld_path = ctx.bldnode.abspath()
     ctx.load('compiler_c')
     ctx.load('mypython')
     ctx.check_python_headers()
@@ -115,9 +115,8 @@ def write_plist(work_dir, pkg_name, pkg_ver, component_sdir='Contents/Packages')
 
 
 def build(ctx):
-    src_node = ctx.path.get_src()
-    src_path = src_node.abspath()
-    bld_node = ctx.path.get_bld()
+    src_path = ctx.srcnode.abspath()
+    bld_node = ctx.bldnode
     bld_path = bld_node.abspath()
     lib_targets = {}
     lib_dirnames = {}
@@ -276,16 +275,14 @@ def build(ctx):
     )
     # Write setup.cfg into tree
     def write_cfg(task):
-        print("Here " + os.getcwd())
-        fname = task.outputs[0].abspath()
-        with open(fname, 'wt') as fobj:
-            fobj.write("""
+        task.outputs[0].write("""
 # setup.cfg file
 [directories]
 # 0verride the default basedir in setupext.py.
 # This can be a single directory or a comma-delimited list of directories.
 basedirlist = {0}, /usr
 """.format(bld_path))
+        return None
     setup_cfg_fname = pjoin(prefix, 'setup.cfg')
     ctx(
         rule = write_cfg,
@@ -313,9 +310,8 @@ basedirlist = {0}, /usr
         mpkgs = glob('{0}/{1}*.mpkg'.format(bld_path, my_name))
         assert len(mpkgs) == 1
         write_plist(mpkgs[0], my_name, my_tag)
-        fname = task.outputs[0].abspath()
-        with open(fname, 'wt') as fobj:
-            fobj.write('done')
+        # touch stamp file
+        task.outputs[0].write('done')
 
     ctx(rule = update_plist,
         source = 'mpkg.stamp',
