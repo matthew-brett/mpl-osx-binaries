@@ -1,4 +1,5 @@
 .waf-*
+.waf3-*
 *.pyc
 *.swp
 *~
