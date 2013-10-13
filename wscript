@@ -42,7 +42,7 @@ EXT_LIBS = [bzip2_pkg, zlib_pkg, libpng_pkg, freetype2_pkg]
 
 python_install_rule = ('cd ${SRC[0].abspath()} && ${PYTHON} setup.py install '
                        '--prefix=${BLD_PREFIX}')
-mpkg_build_rule = ('cd ${SRC[0].abspath()} && ${PYTHON} setup.py bdist_mpkg')
+mpkg_build_rule = ('cd ${SRC[0].abspath()} && bdist_mpkg setup.py bdist_mpkg')
 
 
 # Python packages have to build sequentially because they may compete writing
@@ -84,8 +84,8 @@ def _write_setup_cfg(task):
 [directories]
 # 0verride the default basedir in setupext.py.
 # This can be a single directory or a comma-delimited list of directories.
-basedirlist = ${bld.bldnode.abspath()}, /usr
-""")
+basedirlist = {0}, /usr
+""".format(task.env.BLD_PREFIX))
 
 matplotlib_pkg = GPM('matplotlib',
                      '1.3.1',
