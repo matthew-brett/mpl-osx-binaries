@@ -9,14 +9,36 @@ import shutil
 
 PY3 = sys.version_info[0] >= 3
 
-from wafutils import back_tick
+from wafutils import back_tick, FilePackageMaker as FPM, GitPackageMaker as GPM
 
 # External libraries
-EXTLIBS = (
-    ('bzip2', 'archives/bzip2-1.0.6.tar.gz'),
-    ('zlib', 'v1.2.8'),
-    ('libpng', 'v1.5.9'),
-    ('freetype2', 'VER-2-5-0-1'))
+bzip2_pkg = FPM('bzip2',
+                'archives/bzip2-1.0.6.tar.gz',
+                ('cd ${SRC[0].abspath()} && '
+                 'LDFLAGS="${THIN_LDFLAGS}" make -j3 && '
+                 'make install PREFIX=${BLD_PREFIX}'))
+zlib_pkg = GPM('zlib',
+               'v1.2.8',
+               ('cd ${SRC[0].abspath()} && '
+                'LDFLAGS="${THIN_LDFLAGS}" ./configure --prefix=${BLD_PREFIX} && '
+                'make -j3 install'))
+libpng_pkg = GPM('libpng',
+                 'v1.5.9',
+                 ('cd ${SRC[0].abspath()} && '
+                  'LDFLAGS="${THIN_LDFLAGS}" ./configure --disable-dependency-tracking '
+                  '--prefix=${BLD_PREFIX} && '
+                  'make -j3 install'),
+                 after = 'zlib.build')
+freetype2_pkg = GPM('freetype2',
+                    'VER-2-5-0-1',
+                    ('cd ${SRC[0].abspath()} && '
+                     './configure --prefix=${BLD_PREFIX} && '
+                     'make -j3 && ' # make and install have to be separate
+                     'make -j3 install'), # I have no idea why
+                    patcher = 'patches/freetype2/VER-2-5-0-1.patch',
+                    after = ['bzip2.build', 'libpng.build'])
+
+EXT_LIBS = [bzip2_pkg, zlib_pkg, libpng_pkg, freetype2_pkg]
 
 PDU_PKG = ('archives/python-dateutil-2.0.tar.gz' if PY3
           else 'archives/python-dateutil-1.5.tar.gz')
@@ -63,6 +85,7 @@ def configure(ctx):
     ctx.check_python_headers()
     ctx.check_python_module('numpy')
     ctx.env.BLD_PREFIX = bld_path
+    ctx.env.BLD_SRC = pjoin(bld_path, 'src')
     ctx.find_program('touch', var='TOUCH')
     ctx.find_program('git', var='GIT')
     try:
@@ -118,89 +141,18 @@ def build(ctx):
     src_path = ctx.srcnode.abspath()
     bld_node = ctx.bldnode
     bld_path = bld_node.abspath()
-    lib_targets = {}
-    lib_dirnames = {}
-    for name, source in EXTLIBS:
-        if source.startswith('archives/'):
-            _, pkg_file = psplit(source)
-            assert pkg_file.endswith('.tar.gz')
-            pkg_dir, _ = pkg_file.split('.tar.', 1)
-            pkg_ver, _ = pkg_dir.split('-', 1)
-            prefix = pjoin('src', pkg_dir)
-            dirnode = bld_node.make_node(prefix)
-            pkg_path = pjoin(src_path, source)
-            ctx(
-                rule = ('cd src && tar zxvf ' + pkg_path),
-                target = dirnode)
-        else: # assume tag
-            git_dir = pjoin(src_path, name)
-            prefix = pjoin('src', name)
-            dirnode = bld_node.make_node(prefix)
-            pkg_ver = source
-            ctx(
-                rule = ('cd {0} && '
-                        'git archive --prefix={1}/ {2} | '
-                        '( cd {3} && tar x )'.format(
-                        git_dir, prefix, source, bld_path)),
-                target = dirnode,
-            )
-        patch_file = pjoin(src_path, 'patches', name, pkg_ver + '.patch')
-        if os.path.isfile(patch_file):
-            target = name + '.patch.stamp'
-            ctx(
-                rule = ('cd ${SRC} && patch -p1 < %s && '
-                        'cd ../.. && ${TOUCH} ${TGT}' %
-                        patch_file),
-                source = dirnode,
-                target = target,
-            )
-        else:
-            target = dirnode
-        lib_targets[name] = target
-        lib_dirnames[name] = prefix
-    ctx( # bzip2
-        rule   = ('cd %s && '
-                  'LDFLAGS="${THIN_LDFLAGS}" make -j3 && '
-                  'LDFLAGS="${THIN_LDFLAGS}" make install PREFIX=${BLD_PREFIX} && '
-                  'cd ../.. && ${TOUCH} ${TGT}' %
-                 lib_dirnames['bzip2']),
-        source = lib_targets['bzip2'],
-        target = 'bzip2.stamp',
-    )
-    ctx( # zlib
-        rule   = ('cd src/zlib && '
-                  'LDFLAGS="${THIN_LDFLAGS}" ./configure --prefix=${BLD_PREFIX} && '
-                  'LDFLAGS="${THIN_LDFLAGS}" make -j3 install && '
-                  'cd ../.. && ${TOUCH} ${TGT}'),
-        source = lib_targets['zlib'],
-        target = 'zlib.stamp',
-    )
-    ctx( # libpng
-        rule   = ('cd src/libpng && '
-                  'LDFLAGS="${THIN_LDFLAGS}" ./configure --disable-dependency-tracking '
-                  '--prefix=${BLD_PREFIX} && '
-                  'LDFLAGS="${THIN_LDFLAGS}" make -j3 install && '
-                  'cd ../.. && ${TOUCH} ${TGT}'),
-        source = [lib_targets['libpng'], 'zlib.stamp'],
-        target = 'libpng.stamp',
-    )
-    ctx( # freetype
-        rule   = ('cd src/freetype2 && '
-                  './configure --prefix=${BLD_PREFIX} && '
-                  'make -j3 && '
-                  'make -j3 install && '
-                  'cd ../.. && ${TOUCH} ${TGT}'),
-        source = [lib_targets['freetype2'],
-                  'bzip2.stamp',
-                  'zlib.stamp',
-                  'libpng.stamp'],
-        target = 'freetype2.stamp',
-    )
-    lib_stamps = [s[0] + '.stamp' for s in EXTLIBS]
+    # We need the src directory before we start
+    def pre(ctx):
+        ctx.exec_command('mkdir -p {0}/src'.format(bld_path))
+    ctx.add_pre_fun(pre)
+    # Build the external libs
+    for pkg in EXT_LIBS:
+        pkg.unpack_patch_build(ctx)
     ctx( # Clean dynamic libraries just in case
-        rule = 'rm -rf lib/*.dylib && ${TOUCH} ${TGT}',
-        source = lib_stamps,
-        target = 'dylib_deleted.stamp')
+        rule = 'rm -rf lib/*.dylib',
+        after = 'freetype2.build',
+        name = 'de-dylibbed')
+    return
     # Install python build dependencies
     my_stamps = ['dylib_deleted.stamp']
     site_pkgs = _lib_path('.')
