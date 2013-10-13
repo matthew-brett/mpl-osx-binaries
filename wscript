@@ -40,21 +40,48 @@ freetype2_pkg = GPM('freetype2',
 
 EXT_LIBS = [bzip2_pkg, zlib_pkg, libpng_pkg, freetype2_pkg]
 
-PDU_PKG = ('archives/python-dateutil-2.0.tar.gz' if PY3
-          else 'archives/python-dateutil-1.5.tar.gz')
+python_install_rule = ('cd ${SRC[0].abspath()} && ${PYTHON} setup.py install '
+                       '--prefix=${BLD_PREFIX}')
 
-PYPKGS = (
-    ('setuptools',  'archives/setuptools-1.1.6.tar.gz'),
-    ('bdist_mpkg', 'v0.5.0'),
-    ('python-dateutil',  PDU_PKG),
-    ('pytz', 'archives/pytz-2013.7.tar.gz'),
-    ('six',  'archives/six-1.4.1.tar.gz'),
-    ('pyparsing',  'archives/pyparsing-2.0.1.tar.gz'),
-    ('tornado',  'v3.1.1')
-)
+
+# Python packages have to build sequentially because they may compete writing
+# easy-install.pth when installing
+setuptools_pkg = FPM('setuptools',
+                     'archives/setuptools-1.1.6.tar.gz',
+                     python_install_rule,
+                     after = ['freetype2.build'])
+bdist_mpkg_pkg = GPM('bdist_mpkg',
+                     'v0.5.0',
+                     python_install_rule,
+                     after = ['setuptools.build'])
+python_dateutil_pkg = FPM('python-dateutil',
+                          'archives/python-dateutil-2.0.tar.gz' if PY3
+                          else 'archives/python-dateutil-1.5.tar.gz',
+                          python_install_rule,
+                          after = ['bdist_mpkg.build'])
+pytz_pkg = FPM('pytz',
+               'archives/pytz-2013.7.tar.gz',
+               python_install_rule,
+               after = ['python-dateutil.build'])
+six_pkg = FPM('six',
+              'archives/six-1.4.1.tar.gz',
+              python_install_rule,
+              after = ['pytz.build'])
+pyparsing_pkg = FPM('pyparsing',
+                    'archives/pyparsing-2.0.1.tar.gz',
+                    python_install_rule,
+                    after = ['six.build'])
+tornado_pkg = GPM('tornado',
+                  'v3.1.1',
+                  python_install_rule,
+                  after = ['pyparsing.build'])
+
+# Python packages
+PY_PKGS = [setuptools_pkg, bdist_mpkg_pkg, python_dateutil_pkg, pytz_pkg,
+           six_pkg, pyparsing_pkg, tornado_pkg]
 
 # Packages for which we make an mpkg
-MPKG_PKGS = ['tornado', 'pyparsing', 'python-dateutil', 'pytz', 'six']
+MPKG_PKGS = [python_dateutil_pkg, pytz_pkg, six_pkg, pyparsing_pkg, tornado_pkg]
 
 # The one we've been waiting for
 MYSELF = ('matplotlib', '1.3.1')
@@ -86,7 +113,6 @@ def configure(ctx):
     ctx.check_python_module('numpy')
     ctx.env.BLD_PREFIX = bld_path
     ctx.env.BLD_SRC = pjoin(bld_path, 'src')
-    ctx.find_program('touch', var='TOUCH')
     ctx.find_program('git', var='GIT')
     try:
         ctx.find_program('pkg-config')
@@ -143,7 +169,10 @@ def build(ctx):
     bld_path = bld_node.abspath()
     # We need the src directory before we start
     def pre(ctx):
+        # src directory for code tree copies
         ctx.exec_command('mkdir -p {0}/src'.format(bld_path))
+        # python site-packages directory for python installs
+        ctx.exec_command('mkdir -p {0}'.format(_lib_path(bld_path)))
     ctx.add_pre_fun(pre)
     # Build the external libs
     for pkg in EXT_LIBS:
@@ -154,65 +183,19 @@ def build(ctx):
         name = 'de-dylibbed')
     return
     # Install python build dependencies
-    my_stamps = ['dylib_deleted.stamp']
-    site_pkgs = _lib_path('.')
-    site_pkgs_node = bld_node.make_node(site_pkgs)
-    # We need the install directory first
-    ctx(
-        rule = 'mkdir -p ${TGT}',
-        target = site_pkgs_node
-    )
-    # Run installs sequentially; nasty things happen when more than one package
-    # is trying to write to easy-install.pth at the same time
-    install_depends = [site_pkgs_node]
-    mpkg_stamps = [] # mpkgs we are going to add
-    for name, source in PYPKGS:
-        # Copy source first; can be asynchronous
-        if source.startswith('archives/'):
-            _, pkg_file = psplit(source)
-            assert pkg_file.endswith('.tar.gz')
-            pkg_dir, _ = pkg_file.split('.tar.', 1)
-            prefix = pjoin('src', pkg_dir)
-            dirnode = bld_node.make_node(prefix)
-            pkg_path = pjoin(src_path, source)
-            ctx(
-                rule = ('cd src && tar zxvf ' + pkg_path),
-                target = dirnode)
-        else: # assume tag
-            git_dir = pjoin(src_path, name)
-            prefix = pjoin('src', name)
-            dirnode = bld_node.make_node(prefix)
-            ctx(
-                rule = ('cd {0} && '
-                        'git archive --prefix={1}/ {2} | '
-                        '( cd {3} && tar x )'.format(
-                        git_dir, prefix, source, bld_path)),
-                target = dirnode,
-            )
-        # Install must run in sequence to avoid several installs trying to write
-        # the easy-install.pth file at the same time
-        stamp_file = bld_node.make_node(name + '.stamp')
-        ctx(
-            rule = ('cd %s && ${PYTHON} setup.py install '
-                    '--prefix=${BLD_PREFIX} && '
-                    'cd ../.. && ${TOUCH} %s' %
-                    (prefix, stamp_file)
-                   ),
-            source = [dirnode] + install_depends[:],
-            target = stamp_file)
-        my_stamps.append(stamp_file)
-        install_depends = [stamp_file]
+    # Run python installs sequentially; nasty things happen when more than one
+    # package is trying to write to easy-install.pth at the same time
+    mpkg_tasks = []
+    for pkg in PY_PKGS:
+        py_task_name, dir_node = pkg.unpack_patch_build(ctx)
         # Run the mpkgs after the bdist_mpkg install, and the package install
-        if name in MPKG_PKGS:
-            mpkg_stamp_file = bld_node.make_node(name + '.mpkg.stamp')
+        if pkg in MPKG_PKGS:
             ctx(
-                rule = ('cd %s && bdist_mpkg setup.py bdist_mpkg && '
-                        'cd ../.. && ${TOUCH} %s' %
-                        (prefix, mpkg_stamp_file)
-                    ),
-                source = [stamp_file, 'bdist_mpkg.stamp'],
-                target = mpkg_stamp_file)
-            mpkg_stamps.append(mpkg_stamp_file)
+                rule = ('cd ${SRC[0].abspath()} && '
+                        'bdist_mpkg setup.py bdist_mpkg'),
+                source = [dir_node],
+                after = [py_task_name, 'bdist_mpkg.build'])
+            mpkg_tasks.append(pkg.name + '.mpkg.build')
     # At last the real package
     my_name, my_tag = MYSELF
     git_dir = pjoin(src_path, my_name)
@@ -242,32 +225,26 @@ basedirlist = {0}, /usr
         target = [setup_cfg_fname]
     )
     # Compile mpl
-    stamp_file = my_name + '.stamp'
     ctx(
-        rule = ('cd %s && ${PYTHON} setup.py bdist_mpkg && '
-                'cd ../.. && ${TOUCH} %s' % (prefix, stamp_file)
-                ),
-        source = [setup_cfg_fname] + my_stamps,
-        target = stamp_file)
+        rule = ('cd ${SRC[0].abspath()} && ${PYTHON} setup.py bdist_mpkg'),
+        source = [dirnode, setup_cfg_fname],
+        after = ['de-dylibbed', py_task_name], # second is last python install
+        name = 'matplotlib.build')
     # Now the mpkg
     ctx(
         rule = ('cp -r src/{0}/dist/*.mpkg . && '
                 'cp -r src/*/dist/*.mpkg/Contents/Packages/* '
-                '{0}*.mpkg/Contents/Packages && '
-                '${{TOUCH}} {1}').format(my_name, 'mpkg.stamp'),
-        source = [stamp_file] + mpkg_stamps,
-        target = 'mpkg.stamp')
+                '{0}*.mpkg/Contents/Packages').format(my_name),
+        after = ['matplotlib.build'] + mpkg_tasks,
+        name = 'mpkg.build')
     # Write the plist
     def update_plist(task):
         mpkgs = glob('{0}/{1}*.mpkg'.format(bld_path, my_name))
         assert len(mpkgs) == 1
         write_plist(mpkgs[0], my_name, my_tag)
-        # touch stamp file
-        task.outputs[0].write('done')
 
     ctx(rule = update_plist,
-        source = 'mpkg.stamp',
-        target = 'mpkg_plist.stamp'
+        after = ['mpkg.build'],
        )
 
 
