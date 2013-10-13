@@ -78,7 +78,8 @@ tornado_pkg = GPM('tornado',
                   after = ['pyparsing.build'])
 
 def _write_setup_cfg(task):
-    task.outputs[0].write("""
+    setup_node = task.inputs[0].make_node('setup.cfg')
+    setup_node.write("""
 # setup.cfg file
 [directories]
 # 0verride the default basedir in setupext.py.
