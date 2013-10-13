@@ -42,6 +42,7 @@ EXT_LIBS = [bzip2_pkg, zlib_pkg, libpng_pkg, freetype2_pkg]
 
 python_install_rule = ('cd ${SRC[0].abspath()} && ${PYTHON} setup.py install '
                        '--prefix=${BLD_PREFIX}')
+mpkg_build_rule = ('cd ${SRC[0].abspath()} && ${PYTHON} setup.py bdist_mpkg')
 
 
 # Python packages have to build sequentially because they may compete writing
@@ -76,15 +77,29 @@ tornado_pkg = GPM('tornado',
                   python_install_rule,
                   after = ['pyparsing.build'])
 
+def _write_setup_cfg(task):
+    task.outputs[0].write("""
+# setup.cfg file
+[directories]
+# 0verride the default basedir in setupext.py.
+# This can be a single directory or a comma-delimited list of directories.
+basedirlist = ${bld.bldnode.abspath()}, /usr
+""")
+
+matplotlib_pkg = GPM('matplotlib',
+                     '1.3.1',
+                     mpkg_build_rule,
+                     patcher = _write_setup_cfg,
+                     after = ['tornado.build', 'de-dylibbed'])
+
 # Python packages
 PY_PKGS = [setuptools_pkg, bdist_mpkg_pkg, python_dateutil_pkg, pytz_pkg,
-           six_pkg, pyparsing_pkg, tornado_pkg]
+           six_pkg, pyparsing_pkg, tornado_pkg, matplotlib_pkg]
 
 # Packages for which we make an mpkg
 MPKG_PKGS = [python_dateutil_pkg, pytz_pkg, six_pkg, pyparsing_pkg, tornado_pkg]
 
-# The one we've been waiting for
-MYSELF = ('matplotlib', '1.3.1')
+MPKG_META_PKG = matplotlib_pkg
 
 
 def options(opt):
@@ -164,7 +179,6 @@ def write_plist(work_dir, pkg_name, pkg_ver, component_sdir='Contents/Packages')
 
 
 def build(ctx):
-    src_path = ctx.srcnode.abspath()
     bld_node = ctx.bldnode
     bld_path = bld_node.abspath()
     # We need the src directory before we start
@@ -181,67 +195,32 @@ def build(ctx):
         rule = 'rm -rf lib/*.dylib',
         after = 'freetype2.build',
         name = 'de-dylibbed')
-    return
     # Install python build dependencies
-    # Run python installs sequentially; nasty things happen when more than one
-    # package is trying to write to easy-install.pth at the same time
     mpkg_tasks = []
     for pkg in PY_PKGS:
         py_task_name, dir_node = pkg.unpack_patch_build(ctx)
         # Run the mpkgs after the bdist_mpkg install, and the package install
         if pkg in MPKG_PKGS:
+            mpkg_task = pkg.name + '.mpkg.build'
             ctx(
-                rule = ('cd ${SRC[0].abspath()} && '
-                        'bdist_mpkg setup.py bdist_mpkg'),
+                rule = mpkg_build_rule,
                 source = [dir_node],
-                after = [py_task_name, 'bdist_mpkg.build'])
-            mpkg_tasks.append(pkg.name + '.mpkg.build')
-    # At last the real package
-    my_name, my_tag = MYSELF
-    git_dir = pjoin(src_path, my_name)
-    prefix = pjoin('src', my_name)
-    dirnode = bld_node.make_node(prefix)
-    ctx(
-        rule = ('cd {0} && '
-                'git archive --prefix={1}/ {2} | '
-                '( cd {3} && tar x )'.format(
-                git_dir, prefix, my_tag, bld_path)),
-        target = dirnode,
-    )
-    # Write setup.cfg into tree
-    def write_cfg(task):
-        task.outputs[0].write("""
-# setup.cfg file
-[directories]
-# 0verride the default basedir in setupext.py.
-# This can be a single directory or a comma-delimited list of directories.
-basedirlist = {0}, /usr
-""".format(bld_path))
-        return None
-    setup_cfg_fname = pjoin(prefix, 'setup.cfg')
-    ctx(
-        rule = write_cfg,
-        source = dirnode,
-        target = [setup_cfg_fname]
-    )
-    # Compile mpl
-    ctx(
-        rule = ('cd ${SRC[0].abspath()} && ${PYTHON} setup.py bdist_mpkg'),
-        source = [dirnode, setup_cfg_fname],
-        after = ['de-dylibbed', py_task_name], # second is last python install
-        name = 'matplotlib.build')
+                after = [py_task_name, 'bdist_mpkg.build'],
+                name = mpkg_task)
+            mpkg_tasks.append(mpkg_task)
     # Now the mpkg
+    meta_name = MPKG_META_PKG.name
     ctx(
         rule = ('cp -r src/{0}/dist/*.mpkg . && '
                 'cp -r src/*/dist/*.mpkg/Contents/Packages/* '
-                '{0}*.mpkg/Contents/Packages').format(my_name),
+                '{0}*.mpkg/Contents/Packages').format(meta_name),
         after = ['matplotlib.build'] + mpkg_tasks,
         name = 'mpkg.build')
     # Write the plist
     def update_plist(task):
-        mpkgs = glob('{0}/{1}*.mpkg'.format(bld_path, my_name))
+        mpkgs = glob('{0}/{1}*.mpkg'.format(bld_path, meta_name))
         assert len(mpkgs) == 1
-        write_plist(mpkgs[0], my_name, my_tag)
+        write_plist(mpkgs[0], meta_name, MPKG_META_PKG.commit)
 
     ctx(rule = update_plist,
         after = ['mpkg.build'],
