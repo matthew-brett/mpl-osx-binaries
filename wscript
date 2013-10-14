@@ -163,6 +163,9 @@ def configure(ctx):
 
 def write_plist(work_dir, pkg_name, pkg_ver, component_sdir='Contents/Packages'):
     # Write plist starting at working directory
+    # Get newly install bdist_mpkg onto the path
+    import pkg_resources
+    pkg_resources.require('bdist_mpkg')
     from bdist_mpkg.plists import mpkg_info, write, python_requirement
     from bdist_mpkg import tools
     wd = abspath(work_dir)
@@ -217,6 +220,8 @@ def build(ctx):
                 '{0}*.mpkg/Contents/Packages').format(meta_name),
         after = ['matplotlib.build'] + mpkg_tasks,
         name = 'mpkg.build')
+    # Put the new packages on the python path
+    sys.path.insert(0, ctx.env.PYTHONPATH)
     # Write the plist
     def update_plist(task):
         mpkgs = glob('{0}/{1}*.mpkg'.format(bld_path, meta_name))
