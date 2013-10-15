@@ -220,15 +220,10 @@ def build(ctx):
                 '{0}*.mpkg/Contents/Packages').format(meta_name),
         after = ['matplotlib.build'] + mpkg_tasks,
         name = 'mpkg.build')
-    # Put the new packages on the python path
-    sys.path.insert(0, ctx.env.PYTHONPATH)
-    # Write the plist
-    def update_plist(task):
-        mpkgs = glob('{0}/{1}*.mpkg'.format(bld_path, meta_name))
-        assert len(mpkgs) == 1
-        write_plist(mpkgs[0], meta_name, MPKG_META_PKG.commit)
-
-    ctx(rule = update_plist,
+    ctx(rule =
+        '{python} rewrite_plist.py '
+        '{meta_name} {bld_path}/{meta_name}*.mpkg'.format(
+            python=ctx.env.PYTHON, meta_name=meta_name, bld_path=bld_path),
         after = ['mpkg.build'],
        )
 
