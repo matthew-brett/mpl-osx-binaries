@@ -11,6 +11,9 @@ PY3 = sys.version_info[0] >= 3
 
 from wafutils import back_tick, FilePackageMaker as FPM, GitPackageMaker as GPM
 
+# If you change any git commits in the package definitions, you may need to run
+# the ``waf refresh_submodules`` command
+
 # External libraries
 bzip2_pkg = FPM('bzip2',
                 'archives/bzip2-1.0.6.tar.gz',
@@ -221,11 +224,25 @@ def build(ctx):
         after = ['matplotlib.build'] + mpkg_tasks,
         name = 'mpkg.build')
     ctx(rule =
-        '{python} rewrite_plist.py '
+        '${{PYTHON}} ../rewrite_plist.py '
         '{meta_name} {bld_path}/{meta_name}*.mpkg'.format(
-            python=ctx.env.PYTHON, meta_name=meta_name, bld_path=bld_path),
+            meta_name=meta_name, bld_path=bld_path),
         after = ['mpkg.build'],
        )
+
+
+def refresh_submodules(ctx):
+    # Command to set submodules to defined commits
+    for git_name, git_pkg in GPM.instances.items():
+        checkout_cmd = 'cd {s.git_sdir} && git checkout {s.commit}'.format(
+            s = git_pkg)
+        fetch_cmd = 'cd {s.git_sdir} && git fetch -all'.format(
+            s = git_pkg)
+        try:
+            ctx.exec_command(checkout_cmd)
+        except OSError:
+            ctx.exec_command(fetch_cmd)
+            ctx.exec_command(checkout_cmd)
 
 
 def write_mpkg(ctx):

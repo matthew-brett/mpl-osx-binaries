@@ -58,6 +58,8 @@ def seq_to_list(seq):
 
 
 class FilePackageMaker(object):
+    # all packages
+    instances = {}
 
     def __init__(self, name, filename, build_cmd,
                  depends=(),
@@ -117,6 +119,14 @@ class FilePackageMaker(object):
         self.depends = seq_to_list(depends)
         self.after = seq_to_list(after)
         self.build_src_sdir = build_src_sdir
+        self._register_instance()
+
+    def _register_instance(self):
+        """ Register instance to class dictionary """
+        if self.name in self.instances:
+            raise ValueError('Name "{0}" already in instance '
+                             'dict'.format(self.name))
+        self.instances[self.name] = self
 
     def _unpack(self, bctx):
         task_name = self.name + '.unpack'
@@ -167,11 +177,13 @@ class FilePackageMaker(object):
             source = [dir_node] + self.depends,
             after = [task_name] + self.after,
             name = build_name)
-        print("Here", dir_node.abspath())
         return build_name, dir_node
 
 
 class GitPackageMaker(FilePackageMaker):
+    # all packages
+    instances = {}
+
     def __init__(self, name, commit, build_cmd,
                  depends=(),
                  after=(),
@@ -215,6 +227,7 @@ class GitPackageMaker(FilePackageMaker):
         self.depends = seq_to_list(depends)
         self.after = seq_to_list(after)
         self.build_src_sdir = build_src_sdir
+        self._register_instance()
 
     def _unpack(self, bctx):
         src_path = bctx.srcnode.abspath()
