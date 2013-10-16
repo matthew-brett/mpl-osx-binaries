@@ -6,7 +6,7 @@ Build system for matplotlib OSX binaries
 
 You'll need:
 
-* OSX 10.6 (>10.6 might work, I haven't tested)
+* OSX >=10.6 (I've tested 10.6 and 10.8, <10.6 might work, I haven't tested)
 * Xcode command line tools
 * git on your system path
 * pkg-config on your system path.  I build this from source at
@@ -36,3 +36,16 @@ When the build is done, you should have a new ``matplotlib*mpkg`` directory in
 ``build``.  Copy it somewhere and set permissions with something like::
 
     sudo ./waf write_mpkg --mpkg-outpath=~/Downloads --mpkg-clobber
+
+*********************
+Updating dependencies
+*********************
+
+Some dependencies are archives, others are git submodule commits (tags usually).
+
+To update the archives, download into the ``archive`` directory and edit the
+``wscript`` file to use the new archive filename.
+
+For git submodule commits, update the commit reference in the ``wscript`` file,
+then run ``waf refresh_submodules`` to pull in any necessary commits that you
+don't yet have in the submodules.
