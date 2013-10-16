@@ -19,23 +19,23 @@ bzip2_pkg = FPM('bzip2',
                 'archives/bzip2-1.0.6.tar.gz',
                 ('cd ${SRC[0].abspath()} && '
                  'LDFLAGS="${THIN_LDFLAGS}" make -j3 && '
-                 'make install PREFIX=${BLD_PREFIX}'))
+                 'make install PREFIX=${bld.bldnode.abspath()}'))
 zlib_pkg = GPM('zlib',
                'v1.2.8',
                ('cd ${SRC[0].abspath()} && '
-                'LDFLAGS="${THIN_LDFLAGS}" ./configure --prefix=${BLD_PREFIX} && '
+                'LDFLAGS="${THIN_LDFLAGS}" ./configure --prefix=${bld.bldnode.abspath()} && '
                 'make -j3 install'))
 libpng_pkg = GPM('libpng',
                  'v1.5.9',
                  ('cd ${SRC[0].abspath()} && '
                   'LDFLAGS="${THIN_LDFLAGS}" ./configure --disable-dependency-tracking '
-                  '--prefix=${BLD_PREFIX} && '
+                  '--prefix=${bld.bldnode.abspath()} && '
                   'make -j3 install'),
                  after = 'zlib.build')
 freetype2_pkg = GPM('freetype2',
                     'VER-2-5-0-1',
                     ('cd ${SRC[0].abspath()} && '
-                     './configure --prefix=${BLD_PREFIX} && '
+                     './configure --prefix=${bld.bldnode.abspath()} && '
                      'make -j3 && ' # make and install have to be separate
                      'make -j3 install'), # I have no idea why
                     patcher = 'patches/freetype2/VER-2-5-0-1.patch',
@@ -44,7 +44,7 @@ freetype2_pkg = GPM('freetype2',
 EXT_LIBS = [bzip2_pkg, zlib_pkg, libpng_pkg, freetype2_pkg]
 
 python_install_rule = ('cd ${SRC[0].abspath()} && ${PYTHON} setup.py install '
-                       '--prefix=${BLD_PREFIX}')
+                       '--prefix=${bld.bldnode.abspath()}')
 mpkg_build_rule = ('cd ${SRC[0].abspath()} && bdist_mpkg setup.py bdist_mpkg')
 
 
@@ -88,7 +88,7 @@ def _write_setup_cfg(task):
 # 0verride the default basedir in setupext.py.
 # This can be a single directory or a comma-delimited list of directories.
 basedirlist = {0}, /usr
-""".format(task.env.BLD_PREFIX))
+""".format(task.inputs[0].get_bld().abspath()))
 
 matplotlib_pkg = GPM('matplotlib',
                      '1.3.1',
@@ -130,6 +130,7 @@ def configure(ctx):
     ctx.load('mypython')
     ctx.check_python_headers()
     ctx.check_python_module('numpy')
+    # We need to record the build directory for use by non-build functions
     ctx.env.BLD_PREFIX = bld_path
     ctx.env.BLD_SRC = pjoin(bld_path, 'src')
     ctx.find_program('git', var='GIT')
