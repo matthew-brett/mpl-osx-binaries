@@ -165,27 +165,6 @@ def configure(ctx):
     ctx.env.env = sys_env
 
 
-def write_plist(work_dir, pkg_name, pkg_ver, component_sdir='Contents/Packages'):
-    # Write plist starting at working directory
-    # Get newly install bdist_mpkg onto the path
-    import pkg_resources
-    pkg_resources.require('bdist_mpkg')
-    from bdist_mpkg.plists import mpkg_info, write, python_requirement
-    from bdist_mpkg import tools
-    wd = abspath(work_dir)
-    package_names = glob(pjoin(work_dir, component_sdir, '*.pkg'))
-    package_names = [psplit(pn)[1] for pn in package_names]
-    n_pkgs = len(package_names)
-    extra_plist = dict(
-            IFRequirementDicts=[python_requirement(pkg_name)],
-            IFPkgFlagComponentDirectory=tools.unicode_path(
-                './' + component_sdir))
-    plist = mpkg_info(pkg_name, pkg_ver,
-                      zip(package_names, ('selected',) * n_pkgs))
-    plist.update(extra_plist)
-    write(plist, pjoin(wd, 'Contents', 'Info.plist'))
-
-
 def build(ctx):
     bld_node = ctx.bldnode
     bld_path = bld_node.abspath()
