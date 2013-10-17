@@ -2,10 +2,12 @@
 # vim: ft=python
 from __future__ import division, print_function, absolute_import
 import os
-from os.path import join as pjoin, abspath, split as psplit, isfile
+from os.path import join as pjoin, split as psplit, isfile
 import sys
 from glob import glob
 import shutil
+from subprocess import check_call, CalledProcessError
+from functools import partial
 
 PY3 = sys.version_info[0] >= 3
 
@@ -213,16 +215,19 @@ def build(ctx):
 
 def refresh_submodules(ctx):
     # Command to set submodules to defined commits
+    call = partial(check_call, shell=True)
+    print('Running git submodule update, this might take a while')
+    call('git submodule update --init')
     for git_name, git_pkg in GPM.instances.items():
         checkout_cmd = 'cd {s.git_sdir} && git checkout {s.commit}'.format(
             s = git_pkg)
-        fetch_cmd = 'cd {s.git_sdir} && git fetch -all'.format(
+        fetch_cmd = 'cd {s.git_sdir} && git fetch'.format(
             s = git_pkg)
         try:
-            ctx.exec_command(checkout_cmd)
-        except OSError:
-            ctx.exec_command(fetch_cmd)
-            ctx.exec_command(checkout_cmd)
+            call(checkout_cmd)
+        except CalledProcessError:
+            call(fetch_cmd)
+            call(checkout_cmd)
 
 
 def write_mpkg(ctx):
