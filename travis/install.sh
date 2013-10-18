@@ -196,4 +196,4 @@ else
     OS=10.6
     install_mac_numpy $NUMPY $PY $OS
 fi
-build_binaries
+build_install_binaries
