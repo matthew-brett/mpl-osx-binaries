@@ -185,6 +185,9 @@ PREFIX=/Library/Frameworks/Python.framework/Versions/$PIPVER
 sudo $PREFIX/bin/easy_install-$PIPVER pip
 export PIP="sudo $PREFIX/bin/pip-$PIPVER"
 
+# Dependencies for testing
+$PIP install nose
+
 # pip gets confused as to which PYTHONPATH it is supposed to look at
 # make sure to upgrade default-installed packges so that they actually
 # show up in $PYTHON's search path
