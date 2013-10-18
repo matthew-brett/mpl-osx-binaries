@@ -167,7 +167,7 @@ function install_mac_numpy {
 function build_install_binaries {
     $PYTHON waf configure build -v
     mkdir build/packages
-    $SUDO $PYTHON ./waf write_mpkg --mpkg-outpath=build/packages
+    sudo $PYTHON ./waf write_mpkg --mpkg-outpath=build/packages
     sudo installer -pkg build/packages/*.mpkg -target /
     require_success "Failed to build/install matplotlib"
 }
