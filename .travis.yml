@@ -1,0 +1,19 @@
+language:
+  - objective-c
+
+env:
+  matrix:
+    - PY_VERSION="2.7.5" PIPVER="2.7"
+    - PY_VERSION="2.7.5" BIN_NUMPY='1'
+    - PY_VERSION="3.3.2" PIPVER="3.3"
+    #- TEST='macpython33_10.8' BIN_NUMPY='1'
+
+install:
+  - set -vx  # echo commands
+  - source ./travis/install.sh
+
+script:
+  - echo $PWD
+  - mkdir tmp_test_dir
+  - cd tmp_test_dir
+  - source ../travis/test.sh
