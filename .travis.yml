@@ -3,10 +3,10 @@ language:
 
 env:
   matrix:
-    - PY_VERSION="2.7.5" PIPVER="2.7"
-    - PY_VERSION="2.7.5" BIN_NUMPY='1'
-    - PY_VERSION="3.3.2" PIPVER="3.3"
-    #- TEST='macpython33_10.8' BIN_NUMPY='1'
+    # - PY_VERSION="2.7.5" PIP_VER="2.7"
+    - PY_VERSION="2.7.5" PIP_VER="2.7" BIN_NUMPY='1'
+    - PY_VERSION="3.3.2" PIP_VER="3.3"
+    #- PY_VERSION="3.3.2" PIP_VER="3.3" BIN_NUMPY='1'
 
 install:
   - set -vx  # echo commands
