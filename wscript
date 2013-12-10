@@ -48,6 +48,8 @@ EXT_LIBS = [bzip2_pkg, zlib_pkg, libpng_pkg, freetype2_pkg]
 python_install_rule = ('cd ${SRC[0].abspath()} && ${PYTHON} setup.py install '
                        '--prefix=${bld.bldnode.abspath()}')
 mpkg_build_rule = ('cd ${SRC[0].abspath()} && bdist_mpkg setup.py bdist_mpkg')
+wheel_build_rule = ('cd ${SRC[0].abspath()} && '
+                    '${PYTHON} ${bld.srcnode.abspath()}/bdist_wheel.py')
 
 
 # Python packages have to build sequentially because they may compete writing
@@ -56,10 +58,14 @@ setuptools_pkg = FPM('setuptools',
                      'archives/setuptools-1.1.6.tar.gz',
                      python_install_rule,
                      after = ['freetype2.build'])
+wheel_pkg = FPM('wheel',
+                'archives/wheel-0.21.0.tar.gz',
+                python_install_rule,
+                after = ['setuptools.build'])
 bdist_mpkg_pkg = GPM('bdist_mpkg',
                      'v0.5.0',
                      python_install_rule,
-                     after = ['setuptools.build'])
+                     after = ['wheel.build'])
 python_dateutil_pkg = FPM('python-dateutil',
                           'archives/python-dateutil-2.0.tar.gz' if PY3
                           else 'archives/python-dateutil-1.5.tar.gz',
@@ -99,11 +105,15 @@ matplotlib_pkg = GPM('matplotlib',
                      after = ['tornado.build', 'de-dylibbed'])
 
 # Python packages
-PY_PKGS = [setuptools_pkg, bdist_mpkg_pkg, python_dateutil_pkg, pytz_pkg,
-           six_pkg, pyparsing_pkg, tornado_pkg, matplotlib_pkg]
+PY_PKGS = [setuptools_pkg, wheel_pkg, bdist_mpkg_pkg, python_dateutil_pkg,
+           pytz_pkg, six_pkg, pyparsing_pkg, tornado_pkg, matplotlib_pkg]
 
 # Packages for which we make an mpkg
 MPKG_PKGS = [python_dateutil_pkg, pytz_pkg, six_pkg, pyparsing_pkg, tornado_pkg]
+
+# Packages for which we make a wheel
+WHEEL_PKGS = [python_dateutil_pkg, pytz_pkg, six_pkg, pyparsing_pkg, tornado_pkg,
+              matplotlib_pkg]
 
 MPKG_META_PKG = matplotlib_pkg
 
@@ -176,6 +186,8 @@ def build(ctx):
         ctx.exec_command('mkdir -p {0}/src'.format(bld_path))
         # python site-packages directory for python installs
         ctx.exec_command('mkdir -p {0}'.format(_lib_path(bld_path)))
+        # wheelhouse directory
+        ctx.exec_command('mkdir -p {0}/wheelhouse'.format(bld_path))
     ctx.add_pre_fun(pre)
     # Build the external libs
     for pkg in EXT_LIBS:
@@ -186,6 +198,7 @@ def build(ctx):
         name = 'de-dylibbed')
     # Install python build dependencies
     mpkg_tasks = []
+    wheel_tasks = []
     for pkg in PY_PKGS:
         py_task_name, dir_node = pkg.unpack_patch_build(ctx)
         # Run the mpkgs after the bdist_mpkg install, and the package install
@@ -197,6 +210,14 @@ def build(ctx):
                 after = [py_task_name, 'bdist_mpkg.build'],
                 name = mpkg_task)
             mpkg_tasks.append(mpkg_task)
+        if pkg in WHEEL_PKGS:
+            wheel_task = pkg.name + '.wheel.build'
+            ctx(
+                rule = wheel_build_rule,
+                source = [dir_node],
+                after = [py_task_name, 'wheel.build'],
+                name = wheel_task)
+            wheel_tasks.append(wheel_task)
     # Now the mpkg
     meta_name = MPKG_META_PKG.name
     ctx(
@@ -211,6 +232,11 @@ def build(ctx):
             meta_name=meta_name, bld_path=bld_path),
         after = ['mpkg.build'],
        )
+    # And the wheelhouse
+    ctx(
+        rule = 'cp -r src/*/dist/*.whl wheelhouse',
+        after = wheel_tasks,
+        name = 'wheelhouse.build')
 
 
 def refresh_submodules(ctx):
