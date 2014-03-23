@@ -183,7 +183,7 @@ sudo $PYTHON ez_setup.py
 
 PREFIX=/Library/Frameworks/Python.framework/Versions/$PIP_VER
 sudo $PREFIX/bin/easy_install-$PIP_VER pip
-export PIP="sudo $PREFIX/bin/pip-$PIP_VER"
+export PIP="sudo $PREFIX/bin/pip$PIP_VER"
 
 # Dependencies for testing
 $PIP install nose
