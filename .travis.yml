@@ -4,16 +4,16 @@ language:
 env:
   matrix:
     # - PY_VERSION="2.7.5" PIP_VER="2.7"
-    - PY_VERSION="2.7.5" PIP_VER="2.7" BIN_NUMPY='1'
-    - PY_VERSION="3.3.2" PIP_VER="3.3"
-    #- PY_VERSION="3.3.2" PIP_VER="3.3" BIN_NUMPY='1'
+    - VERSION=2.7.7
+    - VERSION=3.3.5
+    - VERSION=3.4.1
 
 install:
   - set -vx  # echo commands
-  - source ./travis/install.sh
+  - source travis_install.sh
 
 script:
   - echo $PWD
   - mkdir tmp_test_dir
   - cd tmp_test_dir
-  - source ../travis/test.sh
+  - source ../travis_test.sh

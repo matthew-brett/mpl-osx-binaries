@@ -16,3 +16,6 @@
 [submodule "tornado"]
 	path = tornado
 	url = https://github.com/facebook/tornado
+[submodule "terryfy"]
+	path = terryfy
+	url = git://github.com/matthew-brett/terryfy.git

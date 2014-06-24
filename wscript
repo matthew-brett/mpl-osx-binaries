@@ -11,7 +11,12 @@ from functools import partial
 
 PY3 = sys.version_info[0] >= 3
 
-from wafutils import back_tick, FilePackageMaker as FPM, GitPackageMaker as GPM
+# Python version first digit -> required numpy for scipy build
+PY_SP_NP_DEPENDS = {2: '1.5.1', 3: '1.7.1'}
+
+from terryfy.wafutils import (back_tick as _bt,
+                              FilePackageMaker as FPM,
+                              GitPackageMaker as GPM)
 
 # If you change any git commits in the package definitions, you may need to run
 # the ``waf refresh_submodules`` command
@@ -142,6 +147,7 @@ def configure(ctx):
     ctx.load('mypython')
     ctx.check_python_headers()
     ctx.check_python_module('numpy')
+    print(ctx.env)
     # We need to record the build directory for use by non-build functions
     ctx.env.BLD_PREFIX = bld_path
     ctx.env.BLD_SRC = pjoin(bld_path, 'src')
@@ -262,7 +268,7 @@ def write_mpkg(ctx):
     if mpkg_outpath is None:
         ctx.fatal('Need to set --mpkg-outpath to write mpkgs')
     # Need to be sudo
-    if not back_tick('whoami') == 'root':
+    if not _bt('whoami') == 'root':
         ctx.fatal('Need to be root to run dist command - use `sudo ./waf write_mpkg`?')
     # Get build time configuration
     from waflib.ConfigSet import ConfigSet
