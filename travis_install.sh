@@ -8,9 +8,9 @@ source terryfy/travis_tools.sh
 
 
 function build_install_binaries {
-    $PYTHON_CMD waf configure build -v
+    $PYTHON_EXE waf configure build -v
     mkdir build/packages
-    sudo $PYTHON_CMD ./waf write_mpkg --mpkg-outpath=build/packages
+    sudo $PYTHON_EXE ./waf write_mpkg --mpkg-outpath=build/packages
     sudo installer -pkg build/packages/*.mpkg -target /
     require_success "Failed to build/install matplotlib"
 }
